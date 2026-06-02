@@ -1,0 +1,9 @@
+.DS_Store
+
+# Android local build outputs
+android/**/build/
+android/**/app/build/
+android/**/*.apk
+android/**/*.idsig
+android/**/debug.keystore
+
