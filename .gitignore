@@ -6,4 +6,5 @@ android/**/app/build/
 android/**/*.apk
 android/**/*.idsig
 android/**/debug.keystore
-
+android/**/release.keystore
+android/**/release-signing.properties
