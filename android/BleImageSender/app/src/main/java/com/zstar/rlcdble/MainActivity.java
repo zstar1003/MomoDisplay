@@ -43,12 +43,11 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
-import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -96,7 +95,6 @@ public class MainActivity extends Activity {
     private TextView navConnect;
     private TextView navUpload;
     private Button connectButton;
-    private FrameLayout pageContainer;
     private LinearLayout connectPage;
     private LinearLayout uploadPage;
     private ImageView previewView;
@@ -389,32 +387,27 @@ public class MainActivity extends Activity {
     private void buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(14), dp(16), dp(14), dp(12));
+        root.setPadding(dp(12), topContentPadding(), dp(12), dp(8));
         root.setBackgroundColor(Color.rgb(247, 247, 244));
 
-        statusText = new TextView(this);
-        statusText.setTextSize(15);
-        statusText.setTypeface(Typeface.DEFAULT_BOLD);
-        statusText.setTextColor(Color.rgb(31, 43, 55));
-        statusText.setGravity(Gravity.CENTER_VERTICAL);
-        statusText.setPadding(dp(14), dp(11), dp(14), dp(11));
-        statusText.setBackground(roundRect(Color.WHITE, dp(12), Color.rgb(218, 223, 229), 1));
-        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        statusParams.setMargins(0, 0, 0, dp(12));
-        root.addView(statusText, statusParams);
-
-        ScrollView scrollView = new ScrollView(this);
-        scrollView.setFillViewport(false);
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        scrollView.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(scrollView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         connectPage = buildConnectPage();
         uploadPage = buildUploadPage();
         content.addView(connectPage);
         content.addView(uploadPage);
-        content.addView(buildTextSection());
+        content.addView(buildTextSection(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+        TextView footer = new TextView(this);
+        footer.setText("Power by zstar");
+        footer.setTextSize(11);
+        footer.setTextColor(Color.rgb(132, 143, 156));
+        footer.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams footerParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        footerParams.setMargins(0, 0, 0, 0);
+        root.addView(footer, footerParams);
 
         setContentView(root);
     }
@@ -428,7 +421,7 @@ public class MainActivity extends Activity {
         LinearLayout actionRow = new LinearLayout(this);
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rowParams.setMargins(0, dp(14), 0, dp(14));
+        rowParams.setMargins(0, dp(10), 0, dp(10));
         page.addView(actionRow, rowParams);
 
         connectButton = primaryButton("连接开发板");
@@ -454,78 +447,44 @@ public class MainActivity extends Activity {
 
     private LinearLayout buildBoardCard() {
         LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(16), dp(16), dp(16), dp(16));
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(10), dp(7), dp(10), dp(7));
         card.setBackground(roundRect(Color.WHITE, dp(16), Color.rgb(221, 225, 230), 1));
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cardParams.setMargins(0, dp(12), 0, 0);
+        cardParams.setMargins(0, dp(6), 0, 0);
         card.setLayoutParams(cardParams);
-
-        LinearLayout topRow = new LinearLayout(this);
-        topRow.setOrientation(LinearLayout.HORIZONTAL);
-        topRow.setGravity(Gravity.CENTER_VERTICAL);
-        card.addView(topRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView badge = new TextView(this);
         badge.setText("4.2");
-        badge.setTextSize(18);
+        badge.setTextSize(16);
         badge.setTypeface(Typeface.DEFAULT_BOLD);
         badge.setTextColor(Color.WHITE);
         badge.setGravity(Gravity.CENTER);
         badge.setBackground(roundRect(Color.rgb(23, 96, 160), dp(14), 0, 0));
-        LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(dp(64), dp(64));
-        topRow.addView(badge, badgeParams);
+        LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(dp(44), dp(44));
+        card.addView(badge, badgeParams);
 
         LinearLayout infoCol = new LinearLayout(this);
         infoCol.setOrientation(LinearLayout.VERTICAL);
+        infoCol.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams infoParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        infoParams.setMargins(dp(14), 0, 0, 0);
-        topRow.addView(infoCol, infoParams);
+        infoParams.setMargins(dp(12), 0, 0, 0);
+        card.addView(infoCol, infoParams);
 
         TextView name = new TextView(this);
         name.setText("ESP32-S3-RLCD");
-        name.setTextSize(18);
+        name.setTextSize(17);
         name.setTypeface(Typeface.DEFAULT_BOLD);
         name.setTextColor(Color.rgb(25, 31, 38));
         infoCol.addView(name);
 
-        TextView model = new TextView(this);
-        model.setText("400 x 300 墨水屏");
-        model.setTextSize(13);
-        model.setTextColor(Color.rgb(96, 107, 120));
-        model.setPadding(0, dp(3), 0, 0);
-        infoCol.addView(model);
-
-        boardStateText = new TextView(this);
-        boardStateText.setText("未连接");
-        boardStateText.setTextSize(13);
-        boardStateText.setTypeface(Typeface.DEFAULT_BOLD);
-        boardStateText.setTextColor(Color.rgb(68, 78, 90));
-        boardStateText.setGravity(Gravity.CENTER);
-        boardStateText.setPadding(dp(12), dp(7), dp(12), dp(7));
-        boardStateText.setBackground(roundRect(Color.rgb(241, 244, 248), dp(12), 0, 0));
-        topRow.addView(boardStateText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        LinearLayout metricRow = new LinearLayout(this);
-        metricRow.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams metricParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        metricParams.setMargins(0, dp(18), 0, 0);
-        card.addView(metricRow, metricParams);
-
-        boardSignalText = metricView("信号", "--");
-        metricRow.addView(boardSignalText, new LinearLayout.LayoutParams(0, dp(64), 1));
-
-        boardLastStatusText = metricView("状态", "待连接");
-        LinearLayout.LayoutParams statusMetricParams = new LinearLayout.LayoutParams(0, dp(64), 1);
-        statusMetricParams.setMargins(dp(10), 0, 0, 0);
-        metricRow.addView(boardLastStatusText, statusMetricParams);
-
         boardDetailText = new TextView(this);
-        boardDetailText.setText("点击连接开发板");
-        boardDetailText.setTextSize(13);
+        boardDetailText.setText(DEVICE_NAME);
+        boardDetailText.setTextSize(11);
         boardDetailText.setTextColor(Color.rgb(96, 107, 120));
-        boardDetailText.setPadding(0, dp(14), 0, 0);
-        card.addView(boardDetailText);
+        boardDetailText.setPadding(0, dp(2), 0, 0);
+        infoCol.addView(boardDetailText);
 
         return card;
     }
@@ -564,25 +523,21 @@ public class MainActivity extends Activity {
     private LinearLayout buildUploadPage() {
         LinearLayout page = pageShell();
         LinearLayout.LayoutParams pageParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        pageParams.setMargins(0, dp(10), 0, 0);
+        pageParams.setMargins(0, dp(7), 0, 0);
         page.setLayoutParams(pageParams);
         page.addView(pageTitle("上传图片"));
 
-        imageStateText = sectionTitle("未选择图片");
-        LinearLayout.LayoutParams imageStateParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        imageStateParams.setMargins(0, dp(8), 0, dp(6));
-        page.addView(imageStateText, imageStateParams);
-
-        previewView = new ImageView(this);
+        previewView = new AspectRatioImageView(this);
         previewView.setBackground(roundRect(Color.WHITE, dp(12), Color.rgb(223, 226, 231), 1));
-        previewView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        previewView.setPadding(dp(8), dp(8), dp(8), dp(8));
-        page.addView(previewView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(250)));
+        previewView.setScaleType(ImageView.ScaleType.FIT_XY);
+        previewView.setPadding(0, 0, 0, 0);
+        LinearLayout.LayoutParams previewParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        page.addView(previewView, previewParams);
 
         LinearLayout actionRow = new LinearLayout(this);
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rowParams.setMargins(0, dp(14), 0, dp(16));
+        rowParams.setMargins(0, dp(8), 0, dp(8));
         page.addView(actionRow, rowParams);
 
         Button pickButton = primaryButton("选择图片");
@@ -606,13 +561,13 @@ public class MainActivity extends Activity {
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setMax(1000);
         progressBar.setProgressDrawable(progressDrawable());
-        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        progressParams.setMargins(0, dp(2), 0, dp(8));
+        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(8));
+        progressParams.setMargins(0, dp(1), 0, dp(4));
         page.addView(progressBar, progressParams);
 
         progressText = new TextView(this);
         progressText.setText("等待上传");
-        progressText.setTextSize(13);
+        progressText.setTextSize(12);
         progressText.setTypeface(Typeface.DEFAULT_BOLD);
         progressText.setTextColor(Color.rgb(31, 43, 55));
         progressText.setGravity(Gravity.CENTER);
@@ -624,27 +579,27 @@ public class MainActivity extends Activity {
     private LinearLayout buildTextSection() {
         LinearLayout page = pageShell();
         LinearLayout.LayoutParams pageParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        pageParams.setMargins(0, dp(18), 0, dp(8));
+        pageParams.setMargins(0, dp(7), 0, 0);
         page.setLayoutParams(pageParams);
         page.addView(pageTitle("上传文字"));
 
         textInput = new EditText(this);
-        textInput.setTextSize(16);
+        textInput.setTextSize(15);
         textInput.setTextColor(Color.rgb(25, 31, 38));
         textInput.setHint("输入要显示的文字");
         textInput.setHintTextColor(Color.rgb(132, 143, 156));
         textInput.setGravity(Gravity.TOP | Gravity.START);
-        textInput.setMinLines(4);
-        textInput.setMaxLines(7);
+        textInput.setMinLines(3);
+        textInput.setMaxLines(6);
         textInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        textInput.setPadding(dp(14), dp(12), dp(14), dp(12));
+        textInput.setPadding(dp(14), dp(10), dp(14), dp(10));
         textInput.setBackground(roundRect(Color.WHITE, dp(12), Color.rgb(223, 226, 231), 1));
-        page.addView(textInput, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(132)));
+        page.addView(textInput, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         LinearLayout actionRow = new LinearLayout(this);
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rowParams.setMargins(0, dp(14), 0, dp(8));
+        rowParams.setMargins(0, dp(5), 0, 0);
         page.addView(actionRow, rowParams);
 
         Button sendTextButton = primaryButton("上传文字");
@@ -654,14 +609,16 @@ public class MainActivity extends Activity {
                 sendSelectedText();
             }
         });
-        actionRow.addView(sendTextButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)));
+        actionRow.addView(sendTextButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)));
 
         textStateText = new TextView(this);
         textStateText.setText("等待输入");
-        textStateText.setTextSize(13);
+        textStateText.setTextSize(12);
         textStateText.setTextColor(Color.rgb(68, 78, 90));
         textStateText.setGravity(Gravity.CENTER);
-        page.addView(textStateText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams textStateParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        textStateParams.setMargins(0, dp(2), 0, 0);
+        page.addView(textStateText, textStateParams);
 
         return page;
     }
@@ -707,11 +664,11 @@ public class MainActivity extends Activity {
     private TextView pageTitle(String text) {
         TextView view = new TextView(this);
         view.setText(text);
-        view.setTextSize(26);
+        view.setTextSize(20);
         view.setTypeface(Typeface.DEFAULT_BOLD);
         view.setTextColor(Color.rgb(25, 31, 38));
         view.setGravity(Gravity.CENTER_VERTICAL);
-        view.setPadding(dp(2), dp(6), 0, dp(4));
+        view.setPadding(dp(2), 0, 0, dp(1));
         return view;
     }
 
@@ -768,9 +725,6 @@ public class MainActivity extends Activity {
         }
         if (boardLastStatusText != null) {
             boardLastStatusText.setText("状态\n" + state);
-        }
-        if (boardDetailText != null && detail != null) {
-            boardDetailText.setText(detail);
         }
     }
 
@@ -1108,7 +1062,7 @@ public class MainActivity extends Activity {
 
     private void sendSelectedImage() {
         if (!connected || bluetoothGatt == null || controlCharacteristic == null || dataCharacteristic == null) {
-            setStatus("先连接开发板");
+            showConnectToast();
             return;
         }
         if (selectedImage == null || selectedImage.length != IMAGE_BYTES) {
@@ -1159,7 +1113,7 @@ public class MainActivity extends Activity {
 
     private void sendSelectedText() {
         if (!connected || bluetoothGatt == null || controlCharacteristic == null || dataCharacteristic == null) {
-            setStatus("先连接开发板");
+            showConnectToast();
             return;
         }
         if (textInput == null) {
@@ -1491,6 +1445,11 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void showConnectToast() {
+        setStatus("请先连接板卡");
+        Toast.makeText(this, "请先连接板卡", Toast.LENGTH_SHORT).show();
+    }
+
     private void log(String message) {
         if (message != null) {
             Log.d(TAG, message);
@@ -1520,10 +1479,10 @@ public class MainActivity extends Activity {
     private TextView sectionTitle(String text) {
         TextView view = new TextView(this);
         view.setText(text);
-        view.setTextSize(14);
+        view.setTextSize(13);
         view.setTypeface(Typeface.DEFAULT_BOLD);
         view.setTextColor(Color.rgb(37, 46, 59));
-        view.setPadding(dp(2), dp(4), 0, dp(6));
+        view.setPadding(dp(2), dp(2), 0, dp(3));
         return view;
     }
 
@@ -1568,7 +1527,7 @@ public class MainActivity extends Activity {
         button.setTextSize(15);
         button.setTextColor(Color.WHITE);
         button.setTypeface(Typeface.DEFAULT_BOLD);
-        button.setMinHeight(dp(52));
+        button.setMinHeight(dp(44));
         button.setPadding(dp(10), 0, dp(10), 0);
         button.setStateListAnimator(null);
         button.setBackground(buttonBg(Color.rgb(23, 96, 160), Color.rgb(16, 72, 122), 0));
@@ -1582,7 +1541,7 @@ public class MainActivity extends Activity {
         button.setTextSize(15);
         button.setTextColor(Color.rgb(29, 57, 82));
         button.setTypeface(Typeface.DEFAULT_BOLD);
-        button.setMinHeight(dp(52));
+        button.setMinHeight(dp(44));
         button.setPadding(dp(10), 0, dp(10), 0);
         button.setStateListAnimator(null);
         button.setBackground(buttonBg(Color.WHITE, Color.rgb(229, 236, 244), Color.rgb(194, 205, 218)));
@@ -1590,7 +1549,7 @@ public class MainActivity extends Activity {
     }
 
     private LinearLayout.LayoutParams weightedButtonParams(int left, int right) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(54), 1);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(42), 1);
         params.setMargins(left, 0, right, 0);
         return params;
     }
@@ -1620,13 +1579,19 @@ public class MainActivity extends Activity {
         LayerDrawable layer = new LayerDrawable(new android.graphics.drawable.Drawable[]{background, clip});
         layer.setId(0, android.R.id.background);
         layer.setId(1, android.R.id.progress);
-        layer.setLayerHeight(0, dp(12));
-        layer.setLayerHeight(1, dp(12));
+        layer.setLayerHeight(0, dp(8));
+        layer.setLayerHeight(1, dp(8));
         return layer;
     }
 
     private int dp(int value) {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private int topContentPadding() {
+        int statusBarId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        int statusBarHeight = statusBarId > 0 ? getResources().getDimensionPixelSize(statusBarId) : dp(24);
+        return statusBarHeight + dp(2);
     }
 
     private static class DeviceEntry {
@@ -1654,6 +1619,19 @@ public class MainActivity extends Activity {
             this.characteristic = characteristic;
             this.value = value;
             this.imageBytes = imageBytes;
+        }
+    }
+
+    private static class AspectRatioImageView extends ImageView {
+        AspectRatioImageView(Context context) {
+            super(context);
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            int width = MeasureSpec.getSize(widthMeasureSpec);
+            int height = (width * 3) / 4;
+            setMeasuredDimension(width, height);
         }
     }
 }
