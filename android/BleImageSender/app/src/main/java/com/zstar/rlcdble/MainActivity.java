@@ -43,11 +43,11 @@ import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.ProgressBar;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.io.IOException;
@@ -56,7 +56,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 
 public class MainActivity extends Activity {
@@ -79,8 +78,13 @@ public class MainActivity extends Activity {
     private final ArrayDeque<WritePacket> writeQueue = new ArrayDeque<>();
 
     private TextView statusText;
-    private TextView logText;
     private TextView progressText;
+    private TextView imageStateText;
+    private TextView navConnect;
+    private TextView navUpload;
+    private FrameLayout pageContainer;
+    private LinearLayout connectPage;
+    private LinearLayout uploadPage;
     private ImageView previewView;
     private ProgressBar progressBar;
     private DeviceAdapter deviceAdapter;
@@ -100,6 +104,7 @@ public class MainActivity extends Activity {
     private WritePacket currentPacket;
     private int totalImageBytes = 0;
     private int sentImageBytes = 0;
+    private int currentPage = 0;
 
     private final ScanCallback scanCallback = new ScanCallback() {
         @Override
@@ -117,7 +122,7 @@ public class MainActivity extends Activity {
         @Override
         public void onScanFailed(int errorCode) {
             scanning = false;
-            setStatus("扫描失败，错误码：" + errorCode);
+            setStatus("扫描失败");
             log("扫描失败：" + errorCode);
             Log.w(TAG, "scan failed: " + errorCode);
         }
@@ -127,7 +132,7 @@ public class MainActivity extends Activity {
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
             if (newState == BluetoothGatt.STATE_CONNECTED) {
-                logOnUi("已连接蓝牙，正在发现服务...");
+                log("已连接蓝牙，正在发现服务...");
                 connected = false;
                 Log.d(TAG, "connected, discovering services");
                 gatt.discoverServices();
@@ -141,7 +146,7 @@ public class MainActivity extends Activity {
                         controlCharacteristic = null;
                         dataCharacteristic = null;
                         statusCharacteristic = null;
-                        setStatus("已断开连接");
+                        setStatus("未连接");
                         log("蓝牙连接已断开。");
                     }
                 });
@@ -151,7 +156,6 @@ public class MainActivity extends Activity {
         @Override
         public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
             negotiatedMtu = mtu > 0 ? mtu : 23;
-            logOnUi("当前 MTU：" + negotiatedMtu);
             Log.d(TAG, "mtu changed: " + negotiatedMtu + ", status=" + status);
         }
 
@@ -159,7 +163,8 @@ public class MainActivity extends Activity {
         public void onServicesDiscovered(final BluetoothGatt gatt, int status) {
             Log.d(TAG, "services discovered status=" + status);
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                logOnUi("发现服务失败：" + status);
+                setStatusOnUi("连接失败");
+                log("发现服务失败：" + status);
                 return;
             }
 
@@ -169,7 +174,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        setStatus("这不是 RLCD 开发板，请换一个设备。");
+                        setStatus("设备不匹配");
                         log("未找到 RLCD 服务 UUID。");
                     }
                 });
@@ -183,7 +188,8 @@ public class MainActivity extends Activity {
 
             if (controlCharacteristic == null || dataCharacteristic == null || statusCharacteristic == null) {
                 Log.w(TAG, "characteristics missing");
-                logOnUi("开发板服务不完整，请确认固件已更新。");
+                setStatusOnUi("固件需更新");
+                log("开发板服务不完整，请确认固件已更新。");
                 gatt.disconnect();
                 return;
             }
@@ -198,7 +204,7 @@ public class MainActivity extends Activity {
                 @Override
                 public void run() {
                     connected = true;
-                    setStatus("已连接开发板，可以发送图片。");
+                    setStatus("已连接");
                     if (status == BluetoothGatt.GATT_SUCCESS) {
                         log("状态通知已开启。");
                     } else {
@@ -226,7 +232,7 @@ public class MainActivity extends Activity {
                     @Override
                     public void run() {
                         sending = false;
-                        setStatus("写入失败，请重新连接后再试。");
+                        setStatus("上传失败");
                         log("BLE 写入失败：" + failedStatus);
                     }
                 });
@@ -267,12 +273,12 @@ public class MainActivity extends Activity {
         requestRuntimePermissions();
 
         if (bluetoothAdapter == null) {
-            setStatus("当前手机不支持蓝牙。");
+            setStatus("蓝牙不可用");
         } else if (!bluetoothAdapter.isEnabled()) {
-            setStatus("蓝牙未开启。");
+            setStatus("请打开蓝牙");
             log("请先在系统设置中打开蓝牙。");
         } else {
-            setStatus("准备就绪：选择图片，然后扫描开发板。");
+            setStatus("准备就绪");
         }
     }
 
@@ -291,19 +297,17 @@ public class MainActivity extends Activity {
                 Uri uri = data.getData();
                 getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 selectedImage = convertImage(uri);
-                setStatus("图片已准备好：400x300，15000 字节。");
-                log("图片已转成屏幕可显示的黑白数据。");
+                markImageReady();
             } catch (SecurityException ignored) {
                 try {
                     selectedImage = convertImage(data.getData());
-                    setStatus("图片已准备好：400x300，15000 字节。");
-                    log("图片已转成屏幕可显示的黑白数据。");
+                    markImageReady();
                 } catch (IOException e) {
-                    setStatus("图片处理失败。");
+                    setStatus("图片处理失败");
                     log(e.getMessage());
                 }
             } catch (IOException e) {
-                setStatus("图片处理失败。");
+                setStatus("图片处理失败");
                 log(e.getMessage());
             }
         }
@@ -314,10 +318,10 @@ public class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQ_PERMISSIONS) {
             if (hasBlePermissions()) {
-                setStatus("权限已授权，可以扫描开发板。");
+                setStatus("可以扫描");
                 log("蓝牙权限已授权。");
             } else {
-                setStatus("缺少蓝牙权限，无法扫描或连接。");
+                setStatus("需要蓝牙权限");
                 log("请在系统设置中允许“附近设备/蓝牙”权限。");
             }
         }
@@ -326,54 +330,129 @@ public class MainActivity extends Activity {
     private void buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(14), dp(14), dp(14), dp(12));
-        root.setBackgroundColor(Color.rgb(246, 247, 249));
-
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(dp(16), dp(14), dp(16), dp(14));
-        header.setBackground(roundRect(Color.rgb(20, 31, 45), dp(12), 0, 0));
-
-        TextView title = new TextView(this);
-        title.setText("墨屏蓝牙传图");
-        title.setTextSize(24);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        title.setTextColor(Color.WHITE);
-        header.addView(title, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText("选择图片后，通过 BLE 发送到 ESP32-S3-RLCD-4.2");
-        subtitle.setTextSize(13);
-        subtitle.setTextColor(Color.rgb(215, 224, 235));
-        subtitle.setPadding(0, dp(6), 0, 0);
-        header.addView(subtitle, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.setPadding(dp(14), dp(16), dp(14), dp(12));
+        root.setBackgroundColor(Color.rgb(247, 247, 244));
 
         statusText = new TextView(this);
-        statusText.setTextSize(14);
-        statusText.setTextColor(Color.rgb(29, 57, 82));
-        statusText.setPadding(dp(12), dp(10), dp(12), dp(10));
-        statusText.setBackground(roundRect(Color.rgb(232, 241, 252), dp(10), Color.rgb(188, 212, 238), 1));
+        statusText.setTextSize(15);
+        statusText.setTypeface(Typeface.DEFAULT_BOLD);
+        statusText.setTextColor(Color.rgb(31, 43, 55));
+        statusText.setGravity(Gravity.CENTER_VERTICAL);
+        statusText.setPadding(dp(14), dp(11), dp(14), dp(11));
+        statusText.setBackground(roundRect(Color.WHITE, dp(12), Color.rgb(218, 223, 229), 1));
         LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        statusParams.setMargins(0, dp(12), 0, dp(10));
+        statusParams.setMargins(0, 0, 0, dp(12));
         root.addView(statusText, statusParams);
 
-        TextView previewTitle = sectionTitle("图片预览");
-        root.addView(previewTitle);
+        pageContainer = new FrameLayout(this);
+        root.addView(pageContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+        connectPage = buildConnectPage();
+        uploadPage = buildUploadPage();
+        pageContainer.addView(connectPage, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        pageContainer.addView(uploadPage, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout nav = new LinearLayout(this);
+        nav.setOrientation(LinearLayout.HORIZONTAL);
+        nav.setPadding(dp(6), dp(6), dp(6), dp(6));
+        nav.setBackground(roundRect(Color.WHITE, dp(16), Color.rgb(221, 225, 230), 1));
+        LinearLayout.LayoutParams navParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64));
+        navParams.setMargins(0, dp(10), 0, 0);
+        root.addView(nav, navParams);
+
+        navConnect = navItem("连接");
+        navConnect.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                showPage(0);
+            }
+        });
+        nav.addView(navConnect, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
+
+        navUpload = navItem("上传");
+        navUpload.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                showPage(1);
+            }
+        });
+        LinearLayout.LayoutParams uploadNavParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1);
+        uploadNavParams.setMargins(dp(6), 0, 0, 0);
+        nav.addView(navUpload, uploadNavParams);
+
+        showPage(0);
+        setContentView(root);
+    }
+
+    private LinearLayout buildConnectPage() {
+        LinearLayout page = pageShell();
+        page.addView(pageTitle("连接"));
+
+        LinearLayout actionRow = new LinearLayout(this);
+        actionRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowParams.setMargins(0, dp(12), 0, dp(14));
+        page.addView(actionRow, rowParams);
+
+        Button scanButton = primaryButton("扫描");
+        scanButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                startScan();
+            }
+        });
+        actionRow.addView(scanButton, weightedButtonParams(0, dp(5)));
+
+        Button disconnectButton = secondaryButton("断开");
+        disconnectButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                disconnectGatt();
+            }
+        });
+        actionRow.addView(disconnectButton, weightedButtonParams(dp(5), 0));
+
+        TextView deviceTitle = sectionTitle("开发板");
+        page.addView(deviceTitle);
+
+        deviceAdapter = new DeviceAdapter(this, devices);
+        ListView deviceList = new ListView(this);
+        deviceList.setDivider(null);
+        deviceList.setAdapter(deviceAdapter);
+        deviceList.setBackground(roundRect(Color.WHITE, dp(12), Color.rgb(223, 226, 231), 1));
+        deviceList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                connect(devices.get(position).device);
+            }
+        });
+        LinearLayout.LayoutParams listParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(132));
+        listParams.setMargins(0, dp(6), 0, 0);
+        page.addView(deviceList, listParams);
+
+        return page;
+    }
+
+    private LinearLayout buildUploadPage() {
+        LinearLayout page = pageShell();
+        page.addView(pageTitle("上传"));
+
+        imageStateText = sectionTitle("未选择图片");
+        LinearLayout.LayoutParams imageStateParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        imageStateParams.setMargins(0, dp(8), 0, dp(6));
+        page.addView(imageStateText, imageStateParams);
 
         previewView = new ImageView(this);
-        previewView.setBackground(roundRect(Color.WHITE, dp(10), Color.rgb(214, 219, 226), 1));
+        previewView.setBackground(roundRect(Color.WHITE, dp(12), Color.rgb(223, 226, 231), 1));
         previewView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         previewView.setPadding(dp(8), dp(8), dp(8), dp(8));
-        root.addView(previewView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(212)));
+        page.addView(previewView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(250)));
 
-        LinearLayout actionRow1 = new LinearLayout(this);
-        actionRow1.setOrientation(LinearLayout.HORIZONTAL);
-        actionRow1.setGravity(Gravity.CENTER);
+        LinearLayout actionRow = new LinearLayout(this);
+        actionRow.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rowParams.setMargins(0, dp(10), 0, 0);
-        root.addView(actionRow1, rowParams);
+        rowParams.setMargins(0, dp(14), 0, dp(16));
+        page.addView(actionRow, rowParams);
 
         Button pickButton = primaryButton("选择图片");
         pickButton.setOnClickListener(new View.OnClickListener() {
@@ -382,85 +461,86 @@ public class MainActivity extends Activity {
                 pickImage();
             }
         });
-        actionRow1.addView(pickButton, weightedButtonParams(0, dp(4)));
+        actionRow.addView(pickButton, weightedButtonParams(0, dp(5)));
 
-        Button scanButton = secondaryButton("扫描开发板");
-        scanButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                startScan();
-            }
-        });
-        actionRow1.addView(scanButton, weightedButtonParams(dp(4), 0));
-
-        TextView deviceTitle = sectionTitle("开发板");
-        LinearLayout.LayoutParams deviceTitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        deviceTitleParams.setMargins(0, dp(12), 0, dp(6));
-        root.addView(deviceTitle, deviceTitleParams);
-
-        deviceAdapter = new DeviceAdapter(this, devices);
-        ListView deviceList = new ListView(this);
-        deviceList.setDivider(null);
-        deviceList.setAdapter(deviceAdapter);
-        deviceList.setBackground(roundRect(Color.WHITE, dp(10), Color.rgb(225, 229, 235), 1));
-        deviceList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                connect(devices.get(position).device);
-            }
-        });
-        root.addView(deviceList, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(92)));
-
-        LinearLayout actionRow2 = new LinearLayout(this);
-        actionRow2.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams row2Params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        row2Params.setMargins(0, dp(10), 0, 0);
-        root.addView(actionRow2, row2Params);
-
-        Button sendButton = primaryButton("发送到墨屏");
+        Button sendButton = secondaryButton("上传");
         sendButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 sendSelectedImage();
             }
         });
-        actionRow2.addView(sendButton, weightedButtonParams(0, dp(4)));
-
-        Button disconnectButton = secondaryButton("断开连接");
-        disconnectButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                disconnectGatt();
-            }
-        });
-        actionRow2.addView(disconnectButton, weightedButtonParams(dp(4), 0));
+        actionRow.addView(sendButton, weightedButtonParams(dp(5), 0));
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setMax(1000);
         progressBar.setProgressDrawable(progressDrawable());
         LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        progressParams.setMargins(0, dp(12), 0, dp(8));
-        root.addView(progressBar, progressParams);
+        progressParams.setMargins(0, dp(2), 0, dp(8));
+        page.addView(progressBar, progressParams);
 
         progressText = new TextView(this);
         progressText.setText("等待上传");
         progressText.setTextSize(13);
         progressText.setTypeface(Typeface.DEFAULT_BOLD);
-        progressText.setTextColor(Color.rgb(29, 57, 82));
+        progressText.setTextColor(Color.rgb(31, 43, 55));
         progressText.setGravity(Gravity.CENTER);
-        root.addView(progressText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        page.addView(progressText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        logText = new TextView(this);
-        logText.setTextSize(12);
-        logText.setTextColor(Color.rgb(40, 47, 56));
-        logText.setTextIsSelectable(true);
-        logText.setPadding(dp(12), dp(10), dp(12), dp(10));
-        logText.setBackground(roundRect(Color.WHITE, dp(10), Color.rgb(225, 229, 235), 1));
-        ScrollView scrollView = new ScrollView(this);
-        scrollView.addView(logText);
-        root.addView(scrollView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        return page;
+    }
 
-        setContentView(root);
+    private LinearLayout pageShell() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(2), dp(2), dp(2), 0);
+        return page;
+    }
+
+    private TextView pageTitle(String text) {
+        TextView view = new TextView(this);
+        view.setText(text);
+        view.setTextSize(26);
+        view.setTypeface(Typeface.DEFAULT_BOLD);
+        view.setTextColor(Color.rgb(25, 31, 38));
+        view.setGravity(Gravity.CENTER_VERTICAL);
+        view.setPadding(dp(2), dp(6), 0, dp(4));
+        return view;
+    }
+
+    private TextView navItem(String text) {
+        TextView view = new TextView(this);
+        view.setText(text);
+        view.setTextSize(15);
+        view.setTypeface(Typeface.DEFAULT_BOLD);
+        view.setGravity(Gravity.CENTER);
+        view.setClickable(true);
+        view.setPadding(0, 0, 0, dp(1));
+        return view;
+    }
+
+    private void showPage(int page) {
+        currentPage = page;
+        if (connectPage != null) {
+            connectPage.setVisibility(page == 0 ? View.VISIBLE : View.GONE);
+        }
+        if (uploadPage != null) {
+            uploadPage.setVisibility(page == 1 ? View.VISIBLE : View.GONE);
+        }
+        updateNavState();
+    }
+
+    private void updateNavState() {
+        styleNav(navConnect, currentPage == 0);
+        styleNav(navUpload, currentPage == 1);
+    }
+
+    private void styleNav(TextView view, boolean selected) {
+        if (view == null) {
+            return;
+        }
+        view.setTextColor(selected ? Color.WHITE : Color.rgb(68, 78, 90));
+        view.setBackground(roundRect(selected ? Color.rgb(23, 96, 160) : Color.TRANSPARENT, dp(12), 0, 0));
     }
 
     private void requestRuntimePermissions() {
@@ -498,6 +578,18 @@ public class MainActivity extends Activity {
         return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
     }
 
+    private void markImageReady() {
+        setStatus("图片已选");
+        if (imageStateText != null) {
+            imageStateText.setText("图片已选");
+        }
+        if (progressBar != null) {
+            progressBar.setProgress(0);
+        }
+        updateProgressText("等待上传", 0);
+        log("图片已转成屏幕可显示的黑白数据。");
+    }
+
     private void pickImage() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -508,17 +600,17 @@ public class MainActivity extends Activity {
 
     private void startScan() {
         if (bluetoothAdapter == null) {
-            setStatus("当前手机不支持蓝牙。");
+            setStatus("蓝牙不可用");
             return;
         }
         if (!bluetoothAdapter.isEnabled()) {
-            setStatus("蓝牙未开启，请先打开蓝牙。");
+            setStatus("请打开蓝牙");
             startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
             return;
         }
         if (!hasBlePermissions()) {
             requestRuntimePermissions();
-            setStatus("请先授权蓝牙权限，然后再次扫描。");
+            setStatus("需要蓝牙权限");
             return;
         }
 
@@ -527,12 +619,12 @@ public class MainActivity extends Activity {
         deviceAdapter.notifyDataSetChanged();
         scanner = bluetoothAdapter.getBluetoothLeScanner();
         if (scanner == null) {
-            setStatus("系统没有返回 BLE 扫描器，请重启蓝牙后再试。");
+            setStatus("扫描不可用");
             return;
         }
 
         scanning = true;
-        setStatus("正在扫描开发板...");
+        setStatus("扫描中");
         log("开始扫描 15 秒，只显示 RLCD-BLE-IMG。若没有结果，请确认开发板已上电并靠近手机。");
         Log.d(TAG, "start scan");
 
@@ -545,10 +637,10 @@ public class MainActivity extends Activity {
             public void run() {
                 stopScan();
                 if (devices.isEmpty()) {
-                    setStatus("没有扫描到开发板。");
+                    setStatus("未找到开发板");
                     log("没有发现 RLCD-BLE-IMG：请确认蓝牙权限、定位开关、开发板供电和距离。");
                 } else {
-                    setStatus("已找到开发板，点击列表连接。");
+                    setStatus("找到开发板");
                 }
             }
         }, 15000);
@@ -606,7 +698,7 @@ public class MainActivity extends Activity {
 
         DeviceEntry entry = new DeviceEntry(device, name, address, result.getRssi(), likelyBoard);
         devices.add(0, entry);
-        setStatus("找到开发板，点击列表连接。");
+        setStatus("找到开发板");
         deviceAdapter.notifyDataSetChanged();
     }
 
@@ -617,7 +709,7 @@ public class MainActivity extends Activity {
         }
         stopScan();
         disconnectGatt();
-        setStatus("正在连接...");
+        setStatus("连接中");
         log("正在连接：" + safeAddress(device));
         Log.d(TAG, "connect " + safeAddress(device));
         if (Build.VERSION.SDK_INT >= 23) {
@@ -635,7 +727,7 @@ public class MainActivity extends Activity {
         bluetoothGatt = null;
         connected = false;
         sending = false;
-        setStatus("已断开连接");
+        setStatus("未连接");
     }
 
     private void enableStatusNotifications(BluetoothGatt gatt) {
@@ -646,7 +738,7 @@ public class MainActivity extends Activity {
                 @Override
                 public void run() {
                     connected = true;
-                    setStatus("已连接开发板，可以发送图片。");
+                    setStatus("已连接");
                     log("没有找到通知描述符，但写入通道可用。");
                 }
             });
@@ -668,7 +760,7 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 connected = true;
-                setStatus("已连接开发板，可以发送图片。");
+                setStatus("已连接");
                 log(message);
             }
         });
@@ -676,15 +768,15 @@ public class MainActivity extends Activity {
 
     private void sendSelectedImage() {
         if (!connected || bluetoothGatt == null || controlCharacteristic == null || dataCharacteristic == null) {
-            setStatus("请先连接开发板。");
+            setStatus("先连接开发板");
             return;
         }
         if (selectedImage == null || selectedImage.length != IMAGE_BYTES) {
-            setStatus("请先选择图片。");
+            setStatus("先选择图片");
             return;
         }
         if (sending) {
-            setStatus("正在上传，请稍等。");
+            setStatus("上传中");
             return;
         }
 
@@ -715,7 +807,7 @@ public class MainActivity extends Activity {
         }
 
         sending = true;
-        setStatus("正在上传图片...");
+        setStatus("上传中");
         log("开始发送：15000 字节，分包载荷 " + payloadSize + " 字节，共 " + (seq + 1) + " 个写入。");
         updateProgressText("上传中", 0);
         writeNext();
@@ -728,9 +820,9 @@ public class MainActivity extends Activity {
         currentPacket = writeQueue.poll();
         if (currentPacket == null) {
             sending = false;
-            setStatus("上传完成，开发板正在保存并刷新。");
+            setStatus("等待刷新");
             log("图片数据已全部写入。");
-            updateProgressText("上传完成，等待屏幕刷新", 1000);
+            updateProgressText("等待刷新", 1000);
             return;
         }
 
@@ -749,7 +841,7 @@ public class MainActivity extends Activity {
             }
         } catch (RuntimeException e) {
             sending = false;
-            setStatus("BLE 写入异常，请重新连接后再试。");
+            setStatus("上传失败");
             log("BLE 写入异常：" + e.getMessage());
             updateProgressText("上传失败", progressBar.getProgress());
             Log.e(TAG, "writeCharacteristic crashed", e);
@@ -758,7 +850,7 @@ public class MainActivity extends Activity {
 
         if (!ok) {
             sending = false;
-            setStatus("写入启动失败，请重新连接后再试。");
+            setStatus("上传失败");
             log("writeCharacteristic 返回失败。");
             updateProgressText("上传失败", progressBar.getProgress());
         }
@@ -854,9 +946,22 @@ public class MainActivity extends Activity {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                log("开发板：" + translateBoardStatus(message));
+                updateBoardStatus(message);
             }
         });
+    }
+
+    private void updateBoardStatus(String message) {
+        log("开发板：" + translateBoardStatus(message));
+        if ("SAVING".equals(message) || "DRAWING".equals(message)) {
+            setStatus("等待刷新");
+        } else if ("DISPLAYED".equals(message)) {
+            setStatus("已显示");
+            updateProgressText("已显示", 1000);
+        } else if (message.startsWith("ERROR")) {
+            setStatus("上传失败");
+            updateProgressText("上传失败", progressBar == null ? 0 : progressBar.getProgress());
+        }
     }
 
     private String translateBoardStatus(String status) {
@@ -880,7 +985,7 @@ public class MainActivity extends Activity {
         }
         int progress = (int) Math.min(1000, (sentImageBytes * 1000L) / totalImageBytes);
         progressBar.setProgress(progress);
-        setStatus(String.format(Locale.CHINA, "上传中：%d/%d 字节", sentImageBytes, totalImageBytes));
+        setStatus("上传中");
         updateProgressText("上传中", progress);
     }
 
@@ -893,20 +998,24 @@ public class MainActivity extends Activity {
     }
 
     private void setStatus(String status) {
-        statusText.setText(status);
+        if (statusText != null) {
+            statusText.setText(status);
+        }
     }
 
-    private void logOnUi(final String message) {
+    private void setStatusOnUi(final String status) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                log(message);
+                setStatus(status);
             }
         });
     }
 
     private void log(String message) {
-        logText.append(message + "\n");
+        if (message != null) {
+            Log.d(TAG, message);
+        }
     }
 
     private String safeAddress(BluetoothDevice device) {
@@ -1037,14 +1146,14 @@ public class MainActivity extends Activity {
             row.setBackgroundColor(Color.WHITE);
 
             TextView name = new TextView(getContext());
-            name.setText((entry != null && entry.likelyBoard ? "开发板  " : "") + (entry == null ? "" : entry.name));
+            name.setText(entry == null ? "" : "开发板");
             name.setTextSize(15);
             name.setTypeface(Typeface.DEFAULT_BOLD);
             name.setTextColor(entry != null && entry.likelyBoard ? Color.rgb(12, 94, 58) : Color.rgb(38, 44, 52));
             row.addView(name);
 
             TextView detail = new TextView(getContext());
-            detail.setText(entry == null ? "" : entry.address + "    信号 " + entry.rssi);
+            detail.setText(entry == null ? "" : "信号 " + entry.rssi);
             detail.setTextSize(12);
             detail.setTextColor(Color.rgb(105, 116, 130));
             detail.setPadding(0, dp(3), 0, 0);
