@@ -54,6 +54,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
 import java.util.UUID;
 
@@ -115,6 +116,7 @@ public class MainActivity extends Activity {
     private boolean connecting = false;
     private boolean connected = false;
     private boolean sending = false;
+    private boolean clockSyncWritePending = false;
     private int lastBoardRssi = Integer.MIN_VALUE;
     private WritePacket currentPacket;
     private int totalImageBytes = 0;
@@ -271,6 +273,12 @@ public class MainActivity extends Activity {
                             Log.w(TAG, "requestMtu failed", e);
                         }
                     }
+                    mainHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            syncDashboardClock();
+                        }
+                    }, 700);
                 }
             });
         }
@@ -278,6 +286,17 @@ public class MainActivity extends Activity {
         @Override
         public void onCharacteristicWrite(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
             Log.d(TAG, "characteristic write status=" + status);
+            if (clockSyncWritePending && characteristic != null && CONTROL_UUID.equals(characteristic.getUuid())) {
+                final int clockStatus = status;
+                clockSyncWritePending = false;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        log(clockStatus == BluetoothGatt.GATT_SUCCESS ? "已同步手机时间。" : "同步手机时间失败：" + clockStatus);
+                    }
+                });
+                return;
+            }
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 final int failedStatus = status;
                 runOnUiThread(new Runnable() {
@@ -428,19 +447,14 @@ public class MainActivity extends Activity {
         connectButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                startScan();
+                if (connected) {
+                    disconnectGatt();
+                } else {
+                    startScan();
+                }
             }
         });
-        actionRow.addView(connectButton, weightedButtonParams(0, dp(5)));
-
-        Button disconnectButton = secondaryButton("断开");
-        disconnectButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                disconnectGatt();
-            }
-        });
-        actionRow.addView(disconnectButton, weightedButtonParams(dp(5), 0));
+        actionRow.addView(connectButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)));
 
         return page;
     }
@@ -766,9 +780,15 @@ public class MainActivity extends Activity {
         if (scanning || connecting) {
             connectButton.setText("正在连接");
             connectButton.setEnabled(false);
+            applyPrimaryButtonStyle(connectButton);
+        } else if (connected) {
+            connectButton.setText("断开连接");
+            connectButton.setEnabled(true);
+            applySecondaryButtonStyle(connectButton);
         } else {
-            connectButton.setText(connected ? "已连接" : "连接开发板");
-            connectButton.setEnabled(!connected);
+            connectButton.setText("连接开发板");
+            connectButton.setEnabled(true);
+            applyPrimaryButtonStyle(connectButton);
         }
     }
 
@@ -1056,8 +1076,56 @@ public class MainActivity extends Activity {
                     updateTransferMetric();
                     updateConnectButton();
                     log(message);
+                    mainHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            syncDashboardClock();
+                        }
+                    }, 700);
                 }
             });
+    }
+
+    private void syncDashboardClock() {
+        if (!connected || bluetoothGatt == null || controlCharacteristic == null || sending) {
+            return;
+        }
+
+        Calendar now = Calendar.getInstance();
+        byte[] packet = new byte[8];
+        packet[0] = 'C';
+        putU16LE(packet, 1, now.get(Calendar.YEAR));
+        packet[3] = (byte) (now.get(Calendar.MONTH) + 1);
+        packet[4] = (byte) now.get(Calendar.DAY_OF_MONTH);
+        packet[5] = (byte) now.get(Calendar.HOUR_OF_DAY);
+        packet[6] = (byte) now.get(Calendar.MINUTE);
+        packet[7] = (byte) now.get(Calendar.SECOND);
+
+        controlCharacteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+        boolean ok;
+        try {
+            clockSyncWritePending = true;
+            if (Build.VERSION.SDK_INT >= 33) {
+                ok = bluetoothGatt.writeCharacteristic(
+                    controlCharacteristic,
+                    packet,
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                ) == 0;
+            } else {
+                controlCharacteristic.setValue(packet);
+                ok = bluetoothGatt.writeCharacteristic(controlCharacteristic);
+            }
+        } catch (RuntimeException e) {
+            clockSyncWritePending = false;
+            log("同步手机时间异常：" + e.getMessage());
+            Log.w(TAG, "clock sync failed", e);
+            return;
+        }
+
+        if (!ok) {
+            clockSyncWritePending = false;
+            log("同步手机时间未发起。");
+        }
     }
 
     private void sendSelectedImage() {
@@ -1530,7 +1598,7 @@ public class MainActivity extends Activity {
         button.setMinHeight(dp(44));
         button.setPadding(dp(10), 0, dp(10), 0);
         button.setStateListAnimator(null);
-        button.setBackground(buttonBg(Color.rgb(23, 96, 160), Color.rgb(16, 72, 122), 0));
+        applyPrimaryButtonStyle(button);
         return button;
     }
 
@@ -1544,8 +1612,18 @@ public class MainActivity extends Activity {
         button.setMinHeight(dp(44));
         button.setPadding(dp(10), 0, dp(10), 0);
         button.setStateListAnimator(null);
-        button.setBackground(buttonBg(Color.WHITE, Color.rgb(229, 236, 244), Color.rgb(194, 205, 218)));
+        applySecondaryButtonStyle(button);
         return button;
+    }
+
+    private void applyPrimaryButtonStyle(Button button) {
+        button.setTextColor(Color.WHITE);
+        button.setBackground(buttonBg(Color.rgb(23, 96, 160), Color.rgb(16, 72, 122), 0));
+    }
+
+    private void applySecondaryButtonStyle(Button button) {
+        button.setTextColor(Color.rgb(29, 57, 82));
+        button.setBackground(buttonBg(Color.WHITE, Color.rgb(229, 236, 244), Color.rgb(194, 205, 218)));
     }
 
     private LinearLayout.LayoutParams weightedButtonParams(int left, int right) {

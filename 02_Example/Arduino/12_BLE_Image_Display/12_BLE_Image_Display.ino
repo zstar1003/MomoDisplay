@@ -11,6 +11,20 @@
 #define LCD_HEIGHT 300
 #define IMAGE_BYTES ((LCD_WIDTH / 8) * LCD_HEIGHT)
 #define MAX_TEXT_BYTES 4096
+#define TEXT_MARGIN_X 18
+#define TEXT_MARGIN_Y 18
+#define TEXT_MAX_WIDTH (LCD_WIDTH - (TEXT_MARGIN_X * 2))
+#define TEXT_MAX_LINES 8
+#define TEXT_BASE_LINE_HEIGHT 26
+#define TEXT_MAX_SCALE 3
+#define TEXT_MIN_SCALE 2
+#define TEXT_SOURCE_X 4
+#define TEXT_SOURCE_Y 12
+#define TEXT_SOURCE_TOP_PADDING 8
+#define TEXT_SOURCE_BOTTOM_PADDING 8
+#define DASHBOARD_DEFAULT_TEMP_C 8
+#define DASHBOARD_DEFAULT_HUMIDITY 45
+#define DASHBOARD_DEFAULT_BATTERY 76
 
 #define RLCD_SCK_PIN 11
 #define RLCD_MOSI_PIN 12
@@ -52,6 +66,14 @@ struct ButtonTracker {
   uint32_t downAt;
 };
 
+struct DashboardDateTime {
+  uint16_t year;
+  uint8_t month;
+  uint8_t day;
+  uint8_t hour;
+  uint8_t minute;
+};
+
 static ST7305_U8g2 lcd(RLCD_SCK_PIN, RLCD_MOSI_PIN, RLCD_DC_PIN, RLCD_CS_PIN, RLCD_RST_PIN);
 static U8G2 *u8g2 = nullptr;
 
@@ -71,6 +93,9 @@ static bool storageReady = false;
 static bool hasSavedImage = false;
 static bool hasSavedText = false;
 static DisplayPage currentPage = PAGE_DEFAULT;
+static uint32_t dashboardClockBaseSeconds = 0;
+static uint32_t dashboardClockBaseMillis = 0;
+static int lastDashboardMinuteKey = -1;
 
 static ButtonTracker keyButton = {BUTTON_KEY_PIN, PAGE_IMAGE, false, false, 0};
 static ButtonTracker bootButton = {BUTTON_BOOT_PIN, PAGE_TEXT, false, false, 0};
@@ -95,6 +120,124 @@ static void drawCenteredUTF8(int y, const char *text)
     x = 0;
   }
   u8g2->drawUTF8(x, y, text);
+}
+
+static void drawCenteredStrAt(int y, const char *text)
+{
+  int textWidth = u8g2->getStrWidth(text);
+  int x = (LCD_WIDTH - textWidth) / 2;
+  if (x < 0) {
+    x = 0;
+  }
+  u8g2->drawStr(x, y, text);
+}
+
+static bool dashboardLeapYear(uint16_t year)
+{
+  return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+static uint8_t dashboardMonthDays(uint16_t year, uint8_t month)
+{
+  static const uint8_t days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  if (month == 2 && dashboardLeapYear(year)) {
+    return 29;
+  }
+  return days[month - 1];
+}
+
+static uint8_t dashboardBuildMonth(const char *month)
+{
+  static const char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+  for (uint8_t i = 0; i < 12; i++) {
+    if (strncmp(month, months[i], 3) == 0) {
+      return i + 1;
+    }
+  }
+  return 1;
+}
+
+static uint32_t dashboardSecondsFromDate(uint16_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t minute, uint8_t second)
+{
+  uint32_t days = 0;
+  for (uint16_t y = 2000; y < year; y++) {
+    days += dashboardLeapYear(y) ? 366 : 365;
+  }
+  for (uint8_t m = 1; m < month; m++) {
+    days += dashboardMonthDays(year, m);
+  }
+  days += day - 1;
+  return days * 86400UL + (uint32_t)hour * 3600UL + (uint32_t)minute * 60UL + second;
+}
+
+static void initDashboardClock()
+{
+  const char *buildDate = __DATE__;
+  const char *buildTime = __TIME__;
+  uint16_t year = (uint16_t)atoi(buildDate + 7);
+  uint8_t month = dashboardBuildMonth(buildDate);
+  uint8_t day = (uint8_t)atoi(buildDate + 4);
+  uint8_t hour = (uint8_t)((buildTime[0] - '0') * 10 + (buildTime[1] - '0'));
+  uint8_t minute = (uint8_t)((buildTime[3] - '0') * 10 + (buildTime[4] - '0'));
+  uint8_t second = (uint8_t)((buildTime[6] - '0') * 10 + (buildTime[7] - '0'));
+
+  dashboardClockBaseSeconds = dashboardSecondsFromDate(year, month, day, hour, minute, second);
+  dashboardClockBaseMillis = millis();
+}
+
+static void setDashboardClock(uint16_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t minute, uint8_t second)
+{
+  if (month < 1 || month > 12 || day < 1 || day > dashboardMonthDays(year, month) || hour > 23 || minute > 59 || second > 59) {
+    return;
+  }
+
+  dashboardClockBaseSeconds = dashboardSecondsFromDate(year, month, day, hour, minute, second);
+  dashboardClockBaseMillis = millis();
+  lastDashboardMinuteKey = -1;
+
+  if (currentPage == PAGE_DEFAULT) {
+    drawDefaultPage();
+  }
+}
+
+static DashboardDateTime dashboardNow()
+{
+  uint32_t elapsed = (millis() - dashboardClockBaseMillis) / 1000UL;
+  uint32_t seconds = dashboardClockBaseSeconds + elapsed;
+  uint32_t days = seconds / 86400UL;
+  uint32_t daySeconds = seconds % 86400UL;
+
+  DashboardDateTime now;
+  now.hour = daySeconds / 3600UL;
+  now.minute = (daySeconds % 3600UL) / 60UL;
+
+  now.year = 2000;
+  while (true) {
+    uint16_t yearDays = dashboardLeapYear(now.year) ? 366 : 365;
+    if (days < yearDays) {
+      break;
+    }
+    days -= yearDays;
+    now.year++;
+  }
+
+  now.month = 1;
+  while (true) {
+    uint8_t monthDays = dashboardMonthDays(now.year, now.month);
+    if (days < monthDays) {
+      break;
+    }
+    days -= monthDays;
+    now.month++;
+  }
+
+  now.day = days + 1;
+  return now;
+}
+
+static int dashboardMinuteKey(const DashboardDateTime &now)
+{
+  return (((int)now.month * 31 + now.day) * 24 + now.hour) * 60 + now.minute;
 }
 
 static void notifyStatus(const char *status)
@@ -128,28 +271,66 @@ static void drawWaitingScreen(const char *status)
   u8g2->sendBuffer();
 }
 
+static void drawBatteryIcon(int x, int y, int width, int height, int percent)
+{
+  if (percent < 0) {
+    percent = 0;
+  }
+  if (percent > 100) {
+    percent = 100;
+  }
+
+  u8g2->drawRFrame(x, y, width, height, 3);
+  u8g2->drawBox(x + width, y + height / 4, 4, height / 2);
+
+  int innerWidth = width - 8;
+  int fillWidth = innerWidth * percent / 100;
+  if (fillWidth > 0) {
+    u8g2->drawBox(x + 4, y + 4, fillWidth, height - 8);
+  }
+}
+
 static void drawDefaultPage()
 {
+  DashboardDateTime now = dashboardNow();
+  char tempText[16];
+  char humidityText[16];
+  char dateText[16];
+  char timeText[8];
+
+  snprintf(tempText, sizeof(tempText), "%dC", DASHBOARD_DEFAULT_TEMP_C);
+  snprintf(humidityText, sizeof(humidityText), "%d%%", DASHBOARD_DEFAULT_HUMIDITY);
+  snprintf(dateText, sizeof(dateText), "%04u.%02u.%02u", now.year, now.month, now.day);
+  snprintf(timeText, sizeof(timeText), "%02u:%02u", now.hour, now.minute);
+
   u8g2->clearBuffer();
   u8g2->setDrawColor(1);
-  u8g2->drawFrame(12, 12, 376, 276);
-  u8g2->drawRFrame(26, 28, 348, 92, 12);
-  u8g2->drawCircle(74, 74, 24);
-  u8g2->drawCircle(74, 74, 12);
-  u8g2->drawLine(50, 74, 98, 74);
-  u8g2->drawLine(74, 50, 74, 98);
 
+  u8g2->drawFrame(8, 8, 384, 284);
+  u8g2->drawHLine(24, 62, 352);
+
+  u8g2->setFont(u8g2_font_9x18B_tf);
+  u8g2->drawStr(24, 42, dateText);
+  u8g2->setFont(u8g2_font_fub20_tn);
+  u8g2->drawStr(194, 44, tempText);
   u8g2->setFont(u8g2_font_10x20_tf);
-  u8g2->drawStr(122, 68, "RLCD Ready");
-  u8g2->setFont(u8g2_font_6x13_tf);
-  u8g2->drawStr(124, 92, BLE_DEVICE_NAME);
+  u8g2->drawStr(260, 43, humidityText);
 
-  u8g2->drawHLine(42, 148, 316);
-  u8g2->drawStr(52, 184, "KEY  : show image");
-  u8g2->drawStr(52, 210, "BOOT : show text");
-  u8g2->drawStr(52, 236, "Hold : home");
+  drawBatteryIcon(337, 24, 42, 22, DASHBOARD_DEFAULT_BATTERY);
+
+  u8g2->setFont(u8g2_font_logisoso92_tn);
+  int timeWidth = u8g2->getStrWidth(timeText);
+  int timeX = (LCD_WIDTH - timeWidth) / 2;
+  if (timeX < 8) {
+    timeX = 8;
+  }
+  u8g2->drawStr(timeX, 217, timeText);
+
+  u8g2->setFont(u8g2_font_6x13_tf);
+  drawCenteredStrAt(276, "power by zstar");
   u8g2->sendBuffer();
   currentPage = PAGE_DEFAULT;
+  lastDashboardMinuteKey = dashboardMinuteKey(now);
 }
 
 static void drawImage()
@@ -180,24 +361,39 @@ static uint8_t utf8CharLength(const char *text)
   return 1;
 }
 
-static void drawWrappedUTF8(int x, int y, int maxWidth, int lineHeight, int maxLines, const char *text)
+static void appendTextLine(String *lines, int &lineCount, const String &line)
+{
+  if (lineCount < TEXT_MAX_LINES) {
+    lines[lineCount++] = line;
+  }
+}
+
+static int textMaxLinesForScale(int scale)
+{
+  int maxLines = (LCD_HEIGHT - (TEXT_MARGIN_Y * 2)) / (TEXT_BASE_LINE_HEIGHT * scale);
+  if (maxLines < 1) {
+    maxLines = 1;
+  }
+  if (maxLines > TEXT_MAX_LINES) {
+    maxLines = TEXT_MAX_LINES;
+  }
+  return maxLines;
+}
+
+static bool wrapUTF8Lines(const char *text, String *lines, int &lineCount, int maxWidth, int maxLines)
 {
   String line;
   const char *cursor = text;
-  int lines = 0;
+  lineCount = 0;
 
-  while (*cursor != '\0' && lines < maxLines) {
+  while (*cursor != '\0' && lineCount < maxLines) {
     if (*cursor == '\r') {
       cursor++;
       continue;
     }
     if (*cursor == '\n') {
-      if (line.length() > 0) {
-        u8g2->drawUTF8(x, y, line.c_str());
-      }
+      appendTextLine(lines, lineCount, line);
       line = "";
-      y += lineHeight;
-      lines++;
       cursor++;
       continue;
     }
@@ -210,10 +406,8 @@ static void drawWrappedUTF8(int x, int y, int maxWidth, int lineHeight, int maxL
 
     String nextLine = line + chunk;
     if (line.length() > 0 && u8g2->getUTF8Width(nextLine.c_str()) > maxWidth) {
-      u8g2->drawUTF8(x, y, line.c_str());
+      appendTextLine(lines, lineCount, line);
       line = chunk;
-      y += lineHeight;
-      lines++;
       cursor += charLen;
       continue;
     }
@@ -222,21 +416,127 @@ static void drawWrappedUTF8(int x, int y, int maxWidth, int lineHeight, int maxL
     cursor += charLen;
   }
 
-  if (line.length() > 0 && lines < maxLines) {
-    u8g2->drawUTF8(x, y, line.c_str());
+  if ((line.length() > 0 || lineCount == 0) && lineCount < maxLines) {
+    appendTextLine(lines, lineCount, line);
   }
+
+  while (*cursor == '\r' || *cursor == '\n') {
+    cursor++;
+  }
+  return *cursor == '\0';
+}
+
+static int layoutTextLines(const char *text, String *lines, int &lineCount)
+{
+  for (int scale = TEXT_MAX_SCALE; scale >= TEXT_MIN_SCALE; scale--) {
+    int maxLines = textMaxLinesForScale(scale);
+    bool fits = wrapUTF8Lines(text, lines, lineCount, TEXT_MAX_WIDTH / scale, maxLines);
+    if (fits || scale == TEXT_MIN_SCALE) {
+      return scale;
+    }
+  }
+  return TEXT_MIN_SCALE;
+}
+
+static bool logicalBufferPixel(int x, int y)
+{
+  if (x < 0 || x >= LCD_WIDTH || y < 0 || y >= LCD_HEIGHT) {
+    return false;
+  }
+
+  int bufferX = LCD_HEIGHT - 1 - y;
+  int bufferY = x;
+  uint8_t *buffer = u8g2->getBufferPtr();
+  int tileWidth = u8g2->getBufferTileWidth();
+  int offset = (bufferY & ~7) * tileWidth + bufferX;
+  return (buffer[offset] & (1 << (bufferY & 7))) != 0;
+}
+
+static void drawScaledTextBitmap(int sourceX, int sourceY, int sourceWidth, int sourceHeight, int scale)
+{
+  size_t bitmapSize = (size_t)sourceWidth * (size_t)sourceHeight;
+  uint8_t *bitmap = (uint8_t *)malloc(bitmapSize);
+  if (bitmap == nullptr) {
+    return;
+  }
+
+  for (int y = 0; y < sourceHeight; y++) {
+    for (int x = 0; x < sourceWidth; x++) {
+      bitmap[(size_t)y * sourceWidth + x] = logicalBufferPixel(sourceX + x, sourceY + y) ? 1 : 0;
+    }
+  }
+
+  u8g2->clearBuffer();
+  u8g2->setDrawColor(1);
+
+  int scaledWidth = sourceWidth * scale;
+  int scaledHeight = sourceHeight * scale;
+  int destX = (LCD_WIDTH - scaledWidth) / 2;
+  int destY = (LCD_HEIGHT - scaledHeight) / 2;
+  if (destX < 0) {
+    destX = 0;
+  }
+  if (destY < 0) {
+    destY = 0;
+  }
+
+  for (int y = 0; y < sourceHeight; y++) {
+    for (int x = 0; x < sourceWidth; x++) {
+      if (bitmap[(size_t)y * sourceWidth + x] != 0) {
+        u8g2->drawBox(destX + x * scale, destY + y * scale, scale, scale);
+      }
+    }
+  }
+
+  free(bitmap);
+}
+
+static void drawCenteredWrappedUTF8(const char *text)
+{
+  String lines[TEXT_MAX_LINES];
+  int lineCount = 0;
+  int scale = layoutTextLines(text, lines, lineCount);
+  int ascent = u8g2->getAscent();
+  int descent = u8g2->getDescent();
+  int glyphHeight = ascent - descent;
+  int sourceHeight = TEXT_SOURCE_TOP_PADDING + glyphHeight + (lineCount - 1) * TEXT_BASE_LINE_HEIGHT + TEXT_SOURCE_BOTTOM_PADDING;
+  int sourceWidth = 0;
+
+  for (int i = 0; i < lineCount; i++) {
+    int lineWidth = u8g2->getUTF8Width(lines[i].c_str());
+    if (lineWidth > sourceWidth) {
+      sourceWidth = lineWidth;
+    }
+  }
+
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    return;
+  }
+  if (sourceWidth > LCD_WIDTH - (TEXT_SOURCE_X * 2)) {
+    sourceWidth = LCD_WIDTH - (TEXT_SOURCE_X * 2);
+  }
+
+  u8g2->clearBuffer();
+  u8g2->setDrawColor(1);
+
+  for (int i = 0; i < lineCount; i++) {
+    int lineWidth = u8g2->getUTF8Width(lines[i].c_str());
+    int x = TEXT_SOURCE_X + (sourceWidth - lineWidth) / 2;
+    if (x < TEXT_SOURCE_X) {
+      x = TEXT_SOURCE_X;
+    }
+    u8g2->drawUTF8(x, TEXT_SOURCE_Y + TEXT_SOURCE_TOP_PADDING + ascent + (i * TEXT_BASE_LINE_HEIGHT), lines[i].c_str());
+  }
+
+  drawScaledTextBitmap(TEXT_SOURCE_X, TEXT_SOURCE_Y, sourceWidth, sourceHeight, scale);
 }
 
 static void drawTextPage()
 {
   u8g2->clearBuffer();
   u8g2->setDrawColor(1);
-  u8g2->drawFrame(10, 10, 380, 280);
-  u8g2->drawHLine(26, 48, 348);
-
-  u8g2->setFont(u8g2_font_wqy14_t_gb2312);
-  drawCenteredUTF8(35, "文字");
-  drawWrappedUTF8(24, 76, 352, 21, 10, textBuffer);
+  u8g2->setFont(u8g2_font_wqy16_t_gb2312);
+  drawCenteredWrappedUTF8(textBuffer);
   u8g2->sendBuffer();
   hasSavedText = true;
   currentPage = PAGE_TEXT;
@@ -526,6 +826,17 @@ class ControlCallbacks : public BLECharacteristicCallbacks {
       return;
     }
 
+    if (data[0] == 'C') {
+      if (len != 8) {
+        notifyStatus("ERROR bad CLOCK packet");
+        return;
+      }
+      uint16_t year = readU16LE(data + 1);
+      setDashboardClock(year, data[3], data[4], data[5], data[6], data[7]);
+      notifyStatus("CLOCK_SYNCED");
+      return;
+    }
+
     if (data[0] == 'A') {
       char progress[48];
       snprintf(progress, sizeof(progress), "RX %lu/%lu", (unsigned long)receivedBytes, (unsigned long)expectedBytes);
@@ -721,6 +1032,19 @@ static void showBootPage(bool loadedImage, bool loadedText)
   showPage(PAGE_DEFAULT, false);
 }
 
+static void refreshDefaultPageIfNeeded()
+{
+  if (currentPage != PAGE_DEFAULT) {
+    return;
+  }
+
+  DashboardDateTime now = dashboardNow();
+  int minuteKey = dashboardMinuteKey(now);
+  if (minuteKey != lastDashboardMinuteKey) {
+    drawDefaultPage();
+  }
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -729,6 +1053,7 @@ void setup()
   lcd.begin(0, U8G2_R1);
   u8g2 = lcd.getU8g2();
   u8g2->enableUTF8Print();
+  initDashboardClock();
   drawWaitingScreen("Starting BLE...");
 
   setupButtons();
@@ -743,6 +1068,7 @@ void loop()
 {
   pollButton(keyButton);
   pollButton(bootButton);
+  refreshDefaultPageIfNeeded();
 
   if (imageReady) {
     imageReady = false;
