@@ -1,48 +1,63 @@
-# Momo
+<div align="center">
+  <img src="assets/logo.png" width="200" alt="MomoDisplay">
+</div>
 
-[中文说明](./README_zh.md)
+<div align="center">
+  <h4>
+    <a href="README.md">🇨🇳 中文</a>
+    <span> | </span>
+    <a href="README_EN.md">🇬🇧 English</a>
+  </h4>
+</div>
 
-Momo is a BLE image and text sender for the Waveshare ESP32-S3-RLCD-4.2 board. It turns the board into a small reflective display that can be updated from an Android phone without Wi-Fi provisioning.
+这是一个基于 Waveshare ESP32-S3-RLCD-4.2 开发板二次开发的项目。它可以在 Android App 蓝牙把图片或文字发送到开发板并显示在墨水屏上。
 
-The repository contains only the project-specific code:
+## 效果展示
 
-- `firmware/MomoDisplay/`: Arduino firmware for the ESP32-S3-RLCD-4.2 board.
-- `android/BleImageSender/`: native Android app source and shell-based APK build script.
+App 端连接开发板并上传图片。
 
-## Features
+<div align="center">
+  <img src="assets/show.jpg" width="500" alt="MomoDisplay">
+</div>
 
-- BLE-only local connection, no Wi-Fi password burned into firmware.
-- Android app named `墨墨`.
-- Upload a 400 x 300 black-and-white image to the RLCD panel.
-- Upload centered text to the panel.
-- Persist the last uploaded image, text, and selected page in FFat flash storage.
-- Default dashboard page with date, time, battery icon, and `power by zstar`.
-- BLE clock sync from the phone after connection.
-- Hardware buttons:
-  - Short press `KEY`: show image page.
-  - Short press `BOOT`: show text page.
-  - Long press `KEY` or `BOOT`: show default dashboard page.
+开发板侧显示图片。
 
-## Hardware
+<div align="center">
+  <img src="assets/show2.jpg" width="500" alt="MomoDisplay">
+</div>
+
+开发板上有三个按键，从左到右依次为 KEY、POWER 和 BOOT。
+
+- 短按 `KEY`：切换到图片页。
+- 短按 `BOOT`：切换到文字页。
+- 长按 `KEY` 或 `BOOT`：切换到默认时钟页。
+
+默认时钟页：
+
+<div align="center">
+  <img src="assets/show3.jpg" width="500" alt="MomoDisplay">
+</div>
+
+## 硬件
 
 - Waveshare ESP32-S3-RLCD-4.2
-- USB-C cable for flashing
-- Optional 18650 lithium battery for standalone use
-- Android phone with BLE support
+- 用于烧录的 USB-C 数据线
+- 可选 18650 锂电池，用于脱离电脑供电
+- 支持 BLE 的 Android 手机
 
-Board power keys are handled by the board hardware. The firmware only reads `KEY` and `BOOT` after the board has powered on.
+电源键由开发板硬件控制。固件只在开发板开机后读取 `KEY` 和 `BOOT` 按键。
 
-## Firmware Setup
+## 固件烧录
 
-Install the Arduino toolchain:
+需要安装：
 
-- Arduino IDE 2.x or `arduino-cli`
+- Arduino IDE 2.x 或 `arduino-cli`
 - ESP32 Arduino core
-- U8g2 library
+- U8g2 库
 
-Arduino IDE settings for this board:
+Arduino IDE 推荐配置：
 
-| Setting | Value |
+| 配置项 | 值 |
 | --- | --- |
 | Board | ESP32S3 Dev Module |
 | USB CDC On Boot | Enabled |
@@ -54,7 +69,7 @@ Arduino IDE settings for this board:
 | CPU Frequency | 240MHz |
 | Upload Speed | 921600 |
 
-Build with `arduino-cli`:
+使用 `arduino-cli` 编译：
 
 ```bash
 arduino-cli core install esp32:esp32
@@ -64,7 +79,7 @@ arduino-cli compile \
   firmware/MomoDisplay
 ```
 
-Upload:
+上传固件：
 
 ```bash
 arduino-cli upload \
@@ -73,63 +88,47 @@ arduino-cli upload \
   firmware/MomoDisplay
 ```
 
-If the board does not enter upload mode automatically, unplug USB-C, hold `BOOT`, plug USB-C back in, wait about one second, then release `BOOT` and upload again.
+如果开发板没有自动进入下载模式，先拔掉 USB-C，按住 `BOOT`，重新插入 USB-C，等待约 1 秒后松开 `BOOT`，再重新上传。
 
-## Android Build
+## Android 打包
 
-The Android app is intentionally simple and does not require Gradle. It is built with Android SDK command-line tools.
+Android App 没有使用 Gradle，直接通过 Android SDK 命令行工具构建。
 
-Requirements:
+需要：
 
 - Android SDK Platform 35
 - Android Build Tools 35.0.0
-- JDK with `javac` and `keytool`
+- 带有 `javac` 和 `keytool` 的 JDK
 - `openssl`
 
-Build debug APK:
+构建 debug APK：
 
 ```bash
 cd android/BleImageSender
 ./build_apk.sh debug
 ```
 
-Build signed release APK:
+构建签名 release APK：
 
 ```bash
 cd android/BleImageSender
 ./build_apk.sh release
 ```
 
-Output paths:
+输出路径：
 
-- Debug: `android/BleImageSender/app/build/outputs/apk/debug/rlcd-ble-image-debug.apk`
-- Release: `android/BleImageSender/app/build/outputs/apk/release/momo-release.apk`
+- Debug：`android/BleImageSender/app/build/outputs/apk/debug/rlcd-ble-image-debug.apk`
+- Release：`android/BleImageSender/app/build/outputs/apk/release/momo-release.apk`
 
-The release build creates `release.keystore` and `release-signing.properties` on first run. They are ignored by Git. Keep them if you want future release APKs to upgrade the same installed app.
+第一次构建 release 时会生成 `release.keystore` 和 `release-signing.properties`，它们不会被 Git 跟踪。后续如果希望 release APK 能覆盖升级同一个已安装 App，需要保留这两个文件。
 
-## Usage
+## 使用方法
 
-1. Flash `firmware/MomoDisplay` to the ESP32-S3-RLCD-4.2 board.
-2. Install the Android APK.
-3. Power on the board.
-4. Open `墨墨` on the phone and allow Bluetooth permissions.
-5. Tap the connection button. The app scans only for `RLCD-BLE-IMG` and connects automatically.
-6. Select an image or enter text, then upload it to the board.
+1. 将 `firmware/MomoDisplay` 烧录到 ESP32-S3-RLCD-4.2 开发板。
+2. 安装 Android APK。
+3. 给开发板上电。
+4. 打开手机上的 `墨墨`，允许蓝牙权限。
+5. 点击连接按钮。App 只扫描 `RLCD-BLE-IMG` 并自动连接。
+6. 选择图片或输入文字，然后上传到开发板。
 
-After connection, the app sends the phone time to the board. The default dashboard page updates from that synchronized clock.
-
-## BLE Protocol
-
-The firmware advertises:
-
-- Device name: `RLCD-BLE-IMG`
-- Service UUID: `7f6b0001-5f02-4fd8-9f23-6f8e4c59a001`
-- Control characteristic: `7f6b0002-5f02-4fd8-9f23-6f8e4c59a001`
-- Data characteristic: `7f6b0003-5f02-4fd8-9f23-6f8e4c59a001`
-- Status characteristic: `7f6b0004-5f02-4fd8-9f23-6f8e4c59a001`
-
-Image data is sent as 1-bit XBM-compatible screen data for a 400 x 300 frame.
-
-## Repository Notes
-
-This repo was trimmed from the original Waveshare resource package. Unrelated examples, factory firmware binaries, LVGL demos, ESP-IDF samples, and vendored third-party libraries were removed so the project stays focused and easy to build.
+App 连接开发板后会自动同步手机时间，默认时钟页会使用同步后的时间刷新。
