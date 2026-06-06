@@ -76,7 +76,7 @@ arduino-cli core install esp32:esp32
 arduino-cli lib install U8g2
 arduino-cli compile \
   --fqbn 'esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,UploadMode=default,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi,FlashMode=qio,CPUFreq=240,UploadSpeed=921600' \
-  firmware/MomoDisplay
+  firmware
 ```
 
 Upload the firmware:
@@ -85,7 +85,7 @@ Upload the firmware:
 arduino-cli upload \
   -p /dev/tty.usbmodemXXXX \
   --fqbn 'esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,UploadMode=default,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi,FlashMode=qio,CPUFreq=240,UploadSpeed=921600' \
-  firmware/MomoDisplay
+  firmware
 ```
 
 If the board does not automatically enter download mode, unplug the USB-C cable, hold down the `BOOT` button, reconnect the USB-C cable, wait about 1 second, release `BOOT`, and then upload the firmware again.
@@ -104,27 +104,27 @@ Requirements:
 Build a debug APK:
 
 ```bash
-cd android/BleImageSender
+cd android
 ./build_apk.sh debug
 ```
 
 Build a signed release APK:
 
 ```bash
-cd android/BleImageSender
+cd android
 ./build_apk.sh release
 ```
 
 Output paths:
 
-- Debug: `android/BleImageSender/app/build/outputs/apk/debug/rlcd-ble-image-debug.apk`
-- Release: `android/BleImageSender/app/build/outputs/apk/release/momo-release.apk`
+- Debug: `android/app/build/outputs/apk/debug/rlcd-ble-image-debug.apk`
+- Release: `android/app/build/outputs/apk/release/momo-release.apk`
 
 During the first release build, `release.keystore` and `release-signing.properties` will be generated automatically. These files are not tracked by Git. If you want future release APKs to upgrade the same installed app, keep these files safe and reuse them.
 
 ## Usage
 
-1. Flash `firmware/MomoDisplay` onto the ESP32-S3-RLCD-4.2 development board.
+1. Flash `firmware` onto the ESP32-S3-RLCD-4.2 development board.
 2. Install the Android APK.
 3. Power on the development board.
 4. Open the **Momo** app on your Android phone and grant Bluetooth permissions.
@@ -132,3 +132,7 @@ During the first release build, `release.keystore` and `release-signing.properti
 6. Select an image or enter text, then upload it to the development board.
 
 After the app connects to the development board, it automatically synchronizes the phone's time. The default clock page will refresh using the synchronized time.
+
+## License
+
+This project is licensed under the [Apache License 2.0](./LICENSE).

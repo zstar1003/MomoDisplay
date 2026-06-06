@@ -76,7 +76,7 @@ arduino-cli core install esp32:esp32
 arduino-cli lib install U8g2
 arduino-cli compile \
   --fqbn 'esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,UploadMode=default,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi,FlashMode=qio,CPUFreq=240,UploadSpeed=921600' \
-  firmware/MomoDisplay
+  firmware
 ```
 
 上传固件：
@@ -85,7 +85,7 @@ arduino-cli compile \
 arduino-cli upload \
   -p /dev/tty.usbmodemXXXX \
   --fqbn 'esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,UploadMode=default,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi,FlashMode=qio,CPUFreq=240,UploadSpeed=921600' \
-  firmware/MomoDisplay
+  firmware
 ```
 
 如果开发板没有自动进入下载模式，先拔掉 USB-C，按住 `BOOT`，重新插入 USB-C，等待约 1 秒后松开 `BOOT`，再重新上传。
@@ -104,27 +104,27 @@ Android App 没有使用 Gradle，直接通过 Android SDK 命令行工具构建
 构建 debug APK：
 
 ```bash
-cd android/BleImageSender
+cd android
 ./build_apk.sh debug
 ```
 
 构建签名 release APK：
 
 ```bash
-cd android/BleImageSender
+cd android
 ./build_apk.sh release
 ```
 
 输出路径：
 
-- Debug：`android/BleImageSender/app/build/outputs/apk/debug/rlcd-ble-image-debug.apk`
-- Release：`android/BleImageSender/app/build/outputs/apk/release/momo-release.apk`
+- Debug：`android/app/build/outputs/apk/debug/rlcd-ble-image-debug.apk`
+- Release：`android/app/build/outputs/apk/release/momo-release.apk`
 
 第一次构建 release 时会生成 `release.keystore` 和 `release-signing.properties`，它们不会被 Git 跟踪。后续如果希望 release APK 能覆盖升级同一个已安装 App，需要保留这两个文件。
 
 ## 使用方法
 
-1. 将 `firmware/MomoDisplay` 烧录到 ESP32-S3-RLCD-4.2 开发板。
+1. 将 `firmware` 烧录到 ESP32-S3-RLCD-4.2 开发板。
 2. 安装 Android APK。
 3. 给开发板上电。
 4. 打开手机上的 `墨墨`，允许蓝牙权限。
@@ -132,3 +132,7 @@ cd android/BleImageSender
 6. 选择图片或输入文字，然后上传到开发板。
 
 App 连接开发板后会自动同步手机时间，默认时钟页会使用同步后的时间刷新。
+
+## 开源协议
+
+本项目使用 [Apache License 2.0](./LICENSE)。
